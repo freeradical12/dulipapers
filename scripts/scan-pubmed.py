@@ -516,11 +516,6 @@ if __name__ == "__main__":
     dotenv.load_dotenv(env_file)
 
     process(sys.argv[1], [
-        'single-cell sequencing',
-        'single-cell RNA sequencing',
-        'single-cell transcriptomics',
-        'single-cell RNA-seq',
-        'single-cell transcriptome',
-        'scRNA-seq',
-        'spatial transcriptomics'
+        'hormone',
+        'endocrine disruptors'
         ])
