@@ -1,6 +1,6 @@
-# 毒理学相关文章
+# 内分泌干扰物相关文章
 
-一个持续更新的专有领域知识库，聚焦单细胞与空转测序，通过收集和整理最新科研文献提供信息。
+内分泌干扰物（EDCs）相关文章 一个持续更新的专有领域知识库,聚焦内分泌干扰物（Endocrine Disrupting Chemicals）
 
 网址：<https://single-cell-papers.bioinfo-assist.com/>
 
@@ -34,12 +34,7 @@
     vi .env
     ```
 
-    ```txt
-    OPENAI_BASE_URL=https://api.deepseek.com  # 若使用 openai API，则留空，或使用 https://api.openai.com/v1
-    OPENAI_API_KEY=sk-XXXX                    # 填写自己账号的 API Key
-    OPENAI_MODEL=deepseek-chat                # 若使用 openai API，可设置为 gpt-4o-mini
-    OPENAI_PROXY_URL=socks5://x.x.x.x:xxxx    # 用于（从国内翻墙）调用 openai API，使用 DeepSeek 则可不配置此项
-    ```
+
   
 4. 初始化并运行Django
 

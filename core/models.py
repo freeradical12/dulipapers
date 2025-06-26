@@ -36,12 +36,12 @@ class Paper(models.Model):
     limitation = models.CharField(max_length=255, null=True, blank=True, default='')
     research_goal = models.CharField(max_length=255, null=True, blank=True, default='')
     research_objects = models.CharField(max_length=255, null=True, blank=True, default='')
-    field_category = models.CharField(max_length=255, null=True, blank=True, default='')
-    disease_category = models.CharField(max_length=255, null=True, blank=True, default='')
-    technique = models.CharField(max_length=255, null=True, blank=True, default='')
-    model_type = models.CharField(max_length=255, null=True, blank=True, default='')
-    data_type = models.CharField(max_length=255, null=True, blank=True, default='')
-    sample_size = models.CharField(max_length=255, null=True, blank=True, default='')
+    chemical_class = models.CharField(max_length=200, blank=True)
+    exposure_route = models.CharField(max_length=200, blank=True)
+    health_effects = models.TextField(blank=True)
+    target_organism = models.CharField(max_length=100, blank=True)
+    experimental_model = models.CharField(max_length=100, blank=True)
+    mechanism = models.TextField(blank=True)
 
     def __str__(self):
         return f"{self.pub_year} - {self.journal} - {self.title}"

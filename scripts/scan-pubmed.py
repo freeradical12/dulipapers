@@ -8,7 +8,8 @@ import dotenv
 import json
 import httpx
 import django
-
+import gzip
+import io
 sys.path.append('.')
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'mysite.settings')
 django.setup()
@@ -164,11 +165,20 @@ class PubmedArticle:
         return f"{self.pmid} - {self.pub_year} - {self.journal}\nTitle: {self.title}\nAbstract: {self.abstract}"
 
 def article_match(article, keyword_list):
+    title = (article.title or "").lower()
+    abstract = (article.abstract or "").lower()
+    
+    # 基础关键词匹配
     for keyword in keyword_list:
         pattern = r'\b{}\b'.format(re.escape(keyword))
-        if re.search(pattern, article.title, re.IGNORECASE) \
-            or re.search(pattern, article.abstract, re.IGNORECASE):
+        if re.search(pattern, title, re.IGNORECASE) or re.search(pattern, abstract, re.IGNORECASE):
             return True
+    
+    
+    # 排除非EDC相关的基因研究
+    if 'gene expression' in abstract and not any(kw in abstract for kw in ['disrupt', 'receptor']):
+        return False
+    
     return False
 
 def prepare_gpt_in_msg(title, abstract):
@@ -176,9 +186,10 @@ def prepare_gpt_in_msg(title, abstract):
         {
             "role": "system",
             "content": """
-You are an information extracting bot. You extracts key information of one scientific paper from provided title and abstract, and translate them into Chinese.
+You are an information extracting bot specialized in endocrine disruptors research. 
+You extract key information from scientific papers on endocrine disrupting chemicals (EDCs).
 
-The extracted key information should be output in JSON format as:
+Output in JSON format:
 
 {
   "article_type": "...",
@@ -186,32 +197,23 @@ The extracted key information should be output in JSON format as:
   "novelty": "...",
   "limitation": "...",
   "research_goal": "...",
-  "research_objects": "...",
-  "field_category": "...",
-  "disease_category": "...",
-  "technique": "...",
-  "model_type": "...",
-  "data_type": "...",
-  "sample_size": "...",
+  "chemical_class": "...",
+  "exposure_route": "...",
+  "health_effects": "...",
+  "target_organism": "...",
+  "experimental_model": "...",
+  "mechanism": "..."
 }
 
-Some cretirea for the key information:
-
-- article_type: pick one of the values of research paper, review, meta-analysis, comments, correction, ...
-- description: Use a short sentence to describe the main content of the article.
-- novelty: Explain the innovation points of this article.
-- limitation: Explain the limitations of this article.
-- research_goal: Briefly explain the research purpose or field of this article.
-- research_objects: Briefly explain the research objects of this article.
-- field_category: pick one of the values of computer vision, natural language processing, machine learning, digital pathology, ...,
-- disease_category: pick one of the values of lung cancer, prostate cancer, cardiovascular disease, geriatric disease, ...,
-- technique: what kind of technique is used in this paper, e.g. NGS, ONT, RNA-seq, methylation sequencing, ...
-- model_type: which model is used in this paper, e.g. CNN, LSTM, GAN, ...
-- data_type: what kind of data is used in this paper, e.g. image, text, video, ...,
-- sample_size: how many (and what kind of) samples has been involved in this research,
-- If no any supported information in the title and abstract, output "NA" for the corresponding key.
-- All values should be translated into Chinese, unless some abbr. that are clear enough to keep in English.
-- Sentences should not have a period at the end.
+Extraction criteria:
+- article_type: research paper, review, meta-analysis, etc.
+- chemical_class: bisphenols, phthalates, pesticides, parabens, etc.
+- exposure_route: dietary, inhalation, dermal, occupational, etc.
+- health_effects: reproductive disorders, developmental issues, metabolic diseases, cancer, etc.
+- target_organism: human, rodent, fish, invertebrate, etc.
+- experimental_model: in vitro, in vivo, epidemiological, computational
+- All values should be in Chinese except for proper nouns and chemical names.
+- Sentences should not end with a period.
 """
         },
         {
@@ -336,6 +338,24 @@ def update_ai_parsed_results(paper, data):
         any_updated = True
     if paper.sample_size != data.get('sample_size', ''):
         paper.sample_size = data.get('sample_size', '')
+        any_updated = True
+    if paper.chemical_class != data.get('chemical_class', ''):
+        paper.chemical_class = data.get('chemical_class', '')
+        any_updated = True
+    if paper.exposure_route != data.get('exposure_route', ''):
+        paper.exposure_route = data.get('exposure_route', '')
+        any_updated = True
+    if paper.health_effects != data.get('health_effects', ''):
+        paper.health_effects = data.get('health_effects', '')
+        any_updated = True
+    if paper.target_organism != data.get('target_organism', ''):
+        paper.target_organism = data.get('target_organism', '')
+        any_updated = True
+    if paper.experimental_model != data.get('experimental_model', ''):
+        paper.experimental_model = data.get('experimental_model', '')
+        any_updated = True
+    if paper.mechanism != data.get('mechanism', ''):
+        paper.mechanism = data.get('mechanism', '')
         any_updated = True
     return any_updated
 
@@ -473,34 +493,63 @@ def process_single(xml_source_id, article, output_dir):
 
     return create_new, any_updated, ai_queried
 
+
+
 def process(xml_gz_file, keyword_list):
+        # 确保文件存在
+    if not os.path.exists(xml_gz_file):
+        print(f"错误：文件不存在 '{xml_gz_file}'")
+        return
+    
+    # 获取绝对路径
+    xml_gz_file = os.path.abspath(xml_gz_file)
+    print(f"处理文件: {xml_gz_file}")
     xml_source_id = os.path.basename(xml_gz_file).split('.')[0]
     output_dir = os.path.join('output', xml_source_id)
     if not os.path.exists(output_dir):
         os.makedirs(output_dir, exist_ok=True)
 
     cnt, new_cnt, updated_cnt, ai_queried_cnt = 0, 0, 0, 0
-    tree = etree.parse(xml_gz_file)
-    root = tree.getroot()
-    total = len(root.xpath('/PubmedArticleSet/PubmedArticle'))
-    for index, xml_node in enumerate(root.xpath('/PubmedArticleSet/PubmedArticle')):
-        article = PubmedArticle(xml_node)
-        if not article_match(article, keyword_list):
-            continue
-
-        cnt += 1
-        print(f"Processing ({xml_source_id} - {index + 1}/{total} - {cnt}): (PMID: {article.pmid}) {article.title}")
-
-        created, updated, ai_queried = process_single(xml_source_id, article, output_dir)
-        if created:
-            new_cnt += 1
-        if updated:
-            updated_cnt += 1
-        if ai_queried:
-            ai_queried_cnt += 1
-
+    
+    try:
+        # 使用 gzip 打开文件
+        with gzip.open(xml_gz_file, 'rb') as f:
+            # 创建文件对象
+            file_obj = io.BytesIO(f.read())
+            
+            # 解析 XML
+            parser = etree.XMLParser(recover=True, huge_tree=True)
+            tree = etree.parse(file_obj, parser=parser)
+            root = tree.getroot()
+            
+            total = len(root.xpath('/PubmedArticleSet/PubmedArticle'))
+            for index, xml_node in enumerate(root.xpath('/PubmedArticleSet/PubmedArticle')):
+                try:
+                    article = PubmedArticle(xml_node)
+                    if not article_match(article, keyword_list):
+                        continue
+                    
+                    cnt += 1
+                    print(f"Processing ({xml_source_id} - {index + 1}/{total} - {cnt}): PMID: {article.pmid}")
+                    
+                    created, updated, ai_queried = process_single(xml_source_id, article, output_dir)
+                    if created:
+                        new_cnt += 1
+                    if updated:
+                        updated_cnt += 1
+                    if ai_queried:
+                        ai_queried_cnt += 1
+                        
+                except Exception as e:
+                    print(f"  处理文章时出错: {str(e)}")
+                    continue
+                    
+    except Exception as e:
+        print(f"处理文件 {xml_gz_file} 时出错: {str(e)}")
+        return
+    
     print(f"Processing {xml_gz_file} completed!")
-    print(f"Total articles: {index + 1}, matched articles: {cnt} ({new_cnt} new, {updated_cnt} updated, {ai_queried_cnt} AI queried)")
+    print(f"Total articles: {total}, matched articles: {cnt} ({new_cnt} new, {updated_cnt} updated, {ai_queried_cnt} AI queried)")
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
@@ -516,6 +565,16 @@ if __name__ == "__main__":
     dotenv.load_dotenv(env_file)
 
     process(sys.argv[1], [
-        'hormone',
-        'endocrine disruptors'
-        ])
+    'endocrine disruptor', 
+    'endocrine disrupting chemical', 
+    'EDC', 
+    'hormone disruptor',
+    'bisphenol', 
+    'phthalate', 
+    'paraben',
+    'dioxin',
+    'pesticide endocrine',
+    'obesogen',
+    'estrogen receptor',
+    'androgen receptor',
+    'thyroid disruptor'])
