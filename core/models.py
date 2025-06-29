@@ -42,18 +42,15 @@ class Paper(models.Model):
     target_organism = models.CharField(max_length=100, blank=True)
     experimental_model = models.CharField(max_length=100, blank=True)
     mechanism = models.TextField(blank=True)
+    field_category = models.CharField(max_length=255, blank=True, null=True)
+    disease_category = models.CharField(max_length=255, blank=True, null=True)
+    technique = models.CharField(max_length=255, blank=True, null=True)
+    model_type = models.CharField(
+        max_length=255, 
+        blank=True, 
+        null=True,
+        verbose_name="模型类型"
+    )
 
     def __str__(self):
         return f"{self.pub_year} - {self.journal} - {self.title}"
-
-class Payment(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE)
-    openid = models.CharField(max_length=128, null=True, blank=True)
-    order_number = models.CharField(max_length=64, unique=True, null=True, blank=True, default=None)
-    has_paid = models.BooleanField(default=False)
-    paid_amount = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True, default=None)
-    payment_date = models.DateTimeField(null=True, blank=True)
-    payment_callback = models.TextField(null=True, blank=True, default=None)
-
-    def __str__(self):
-        return f"{self.user.username} - {'Paid' if self.has_paid else 'Not Paid'}"
