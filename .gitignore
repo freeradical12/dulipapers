@@ -7,3 +7,5 @@ __pycache__/
 static_root/
 cert/
 pubmed
+"pubmed_data/*" 
+"scripts/*" 
